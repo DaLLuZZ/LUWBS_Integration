@@ -1428,3 +1428,146 @@ class B2987(scpi_device):
 		self.set_aperture_time(target_time)
 		
 	
+
+class DM3068(scpi_device):
+	# Rigol DM3068 multimeter
+	# As a SCPI device, it inherits the following functions:
+	# - connect(self)
+	# - get_status(self)
+	# - write(self, target_text)
+	# - read(self)
+	# - query(self, target_text)
+	# - close_connection(self)
+	# - idn(self)
+
+	def __init__(self):
+		super().__init__()
+		rm = pyvisa.ResourceManager()
+		print(rm.list_resources())
+		try:
+			self.inst = rm.open_resource('TCPIP::192.168.10.122::INSTR')
+			status = "Connection to DM3068"
+			print(self.inst)
+		except Exception as e:
+			print("DM3068 import error: " + str(e))
+			status = "Connection error"
+		finally:
+			print(status)
+		del rm
+	
+	# TODO: add all functions supported by instrument
+	def set_function(self, function_name):
+		# check argument
+		if function_name != "VOLT":
+			print("unknown DM3068 function")
+			return -1
+
+		self.write(':FUNCtion:{function_name}:DC')
+		
+		res = self.query(':FUNCtion?')
+		if res != '"' + function_name + '"\n':
+			print("failed to set function: {res}")
+
+	# TODO: implement target mode switching
+	def shot_measure_and_read(self, target_mode = None):
+		self.write(':MEASure:VOLT:DC?')
+		a = self.read()
+		return float(a)
+
+
+class TH1991(scpi_device):
+	# Techmize TH1991 series precision source/measure unit
+	# As a SCPI device, it inherits the following functions:
+	# - connect(self)
+	# - get_status(self)
+	# - write(self, target_text)
+	# - read(self)
+	# - query(self, target_text)
+	# - close_connection(self)
+	# - idn(self)
+	# Known problems:
+	# (!) Read_termination byte is not NONE bot 0x0A (== \r)
+	# (!) The device freezes sometimes
+	#
+	def __init__(self):
+		super().__init__()
+		self.model_type = 'TH1991'
+		self.device_address = 'TCPIP0::192.168.10.137::45454::SOCKET'
+		self.read_termination = chr(0x0A)
+		try:
+			self.connect()
+		except Exception as e:
+			print(f"TH1991 Connection error: {e}")
+			return None
+
+	def output_prepare(self, source_type, target_value, compliance_value):
+		# Проверка аргументов
+		try:
+			target_value = float(target_value)
+			compliance_value = float(compliance_value)
+		except Exception as e:
+			print(f"Argument conversion error: {e}")
+			return -1
+		
+		source_type = source_type.upper()
+
+		if source_type != 'CURR' and source_type != 'VOLT':
+			print(f"Unknown source type: {source_type}")
+			return -1
+
+		# Set mode
+		self.write(f':SOUR1:FUNC:MODE {source_type}')
+		check = self.query(f':SOUR1:FUNC:MODE?')
+		if check != source_type:
+			print(f"error setting source mode: {check}")
+			return -1
+
+		check_precision = 1e-6
+
+		# Enable auto range
+		self.write(f':SOUR1:{source_type}:RANGE:AUTO ON')
+		check = self.query(f':SOUR1:{source_type}:RANGE:AUTO?')
+		if (check != '1'):
+			print(f"error setting auto range: {check}")
+			return -1
+		
+		# Set target value
+		self.write(f':SOUR1:{source_type}:LEV {target_value}')
+		check = self.query(f':SOUR1:{source_type}:LEV?')
+		try:
+			check = float(check)
+		except Exception as e:
+			print(f"Conversion error: {e}")
+			return -1
+		if abs(check - target_value) > check_precision:
+			print(f"error setting target value: {check} != {target_value}")
+			return -1
+
+		# Set compliance
+		comp_type = "CURR"
+		if source_type == "CURR":
+			comp_type = "VOLT"
+		self.write(f':SENS1:{comp_type}:PROT {compliance_value}')
+		check = self.query(f':SENS1:{comp_type}:PROT?')
+		try:
+			check = float(check)
+		except Exception as e:
+			print(f"Conversion error: {e}")
+			return -1
+		if abs(check - compliance_value) > check_precision:
+			print(f"error setting compliance: {check} != {compliance_value}")
+			return -1
+		
+		return 0
+
+	def output_enable(self):
+		self.write(':OUTP1:STAT 1')
+		'''check = self.query(':OUTP1:STAT?')
+		if check != '1':
+			print(f"error enabling output: {check}")'''
+
+	def output_disable(self):
+		self.write(':OUTPut1 0')
+		'''check = self.query(':OUTP1:STAT?')
+		if check != '0':
+			print(f"error disabling output: {check}")'''
