@@ -1426,8 +1426,6 @@ class B2987(scpi_device):
 	def set_aperture_PLC(self, target_PLC):
 		target_time = float(target_PLC)*0.02
 		self.set_aperture_time(target_time)
-		
-	
 
 class DM3068(scpi_device):
 	# Rigol DM3068 multimeter
@@ -1474,7 +1472,6 @@ class DM3068(scpi_device):
 		a = self.read()
 		return float(a)
 
-
 class TH1991(scpi_device):
 	# Techmize TH1991 series precision source/measure unit
 	# As a SCPI device, it inherits the following functions:
@@ -1486,7 +1483,7 @@ class TH1991(scpi_device):
 	# - close_connection(self)
 	# - idn(self)
 	# Known problems:
-	# (!) Read_termination byte is not NONE bot 0x0A (== \r)
+	# (!) Read_termination byte is not NONE but 0x0A (== \r)
 	# (!) The device freezes sometimes
 	#
 	def __init__(self):
@@ -1501,7 +1498,7 @@ class TH1991(scpi_device):
 			return None
 
 	def output_prepare(self, source_type, target_value, compliance_value):
-		# Проверка аргументов
+		# args check
 		try:
 			target_value = float(target_value)
 			compliance_value = float(compliance_value)
@@ -1513,6 +1510,11 @@ class TH1991(scpi_device):
 
 		if source_type != 'CURR' and source_type != 'VOLT':
 			print(f"Unknown source type: {source_type}")
+			return -1
+
+		# safety: disable output
+		if self.output_disable() != 0:
+			print(f"error: Unable to prepare output because it is enabled")
 			return -1
 
 		# Set mode
@@ -1557,17 +1559,113 @@ class TH1991(scpi_device):
 		if abs(check - compliance_value) > check_precision:
 			print(f"error setting compliance: {check} != {compliance_value}")
 			return -1
-		
+
 		return 0
 
 	def output_enable(self):
 		self.write(':OUTP1:STAT 1')
-		'''check = self.query(':OUTP1:STAT?')
-		if check != '1':
-			print(f"error enabling output: {check}")'''
+		for i in range(1000):
+			check = self.query(':OUTP1:STAT?')
+			if check == '1':
+				return 0
+			elif check != '0':
+				print(f"error enabling output: {check}")
+				return -1
+		print(f"error enabling output (timeout)")
+		return -1
 
 	def output_disable(self):
-		self.write(':OUTPut1 0')
-		'''check = self.query(':OUTP1:STAT?')
-		if check != '0':
-			print(f"error disabling output: {check}")'''
+		self.write(':OUTP1:STAT 0')
+		for i in range(1000):
+			check = self.query(':OUTP1:STAT?')
+			if check == '0':
+				return 0
+			elif check != '1':
+				print(f"error disabling output: {check}")
+				return -1
+		print(f"error disabling output (timeout)")
+		return -1
+
+class LUWBS_Switch(scpi_device):
+	# Commutator designed for LUWBS
+	# As a SCPI device, it inherits the following functions:
+	# - connect(self)
+	# - get_status(self)
+	# - write(self, target_text)
+	# - read(self)
+	# - query(self, target_text)
+	# - close_connection(self)
+	# - idn(self)
+	#
+	closure_sequence = None
+	current_step = 0
+	total_steps = 0
+
+	def __init__(self):
+		super().__init__()
+		self.model_type = 'LUWBS'
+		self.device_address = 'TCPIP0::192.168.10.203::5025::SOCKET'
+		self.read_termination = '\r\n'
+		try:
+			self.connect()
+		except Exception as e:
+			print(f"LUWBS_Switch Connection error: {e}")
+			return None
+
+		"""
+		switch = LUWBS_Switch()
+		closure_seq = [
+				["0!0", "1!1", "2!2", "3!3"],
+				["0!1", "1!2", "2!3", "3!0"],
+				["0!2", "1!3", "2!0", "3!1"],
+				["0!2", "1!3", "2!0", "3!1"],
+			]
+		switch.set_closure_sequence(closure_seq)
+		while True:
+			res = switch.close_next()
+			if (res == 0):
+				measure_something() # conduct measurement
+			else:
+				printf("error")
+				break
+		"""
+	# TODO: add checks for closure sequence
+	def set_closure_sequence(self, closure_sequence, current_step = 0):
+		self.closure_sequence = closure_sequence
+		self.current_step = current_step
+		self.total_steps = len(self.closure_sequence)
+
+	def open_all(self):
+		self.write('ROUT:OPEN:ALL')
+
+	def set_current_step(current_step):
+		if (current_step >= self.total_steps):
+			print(f"Error: current step value {current_step} exceeds closure sequence len {self.total_steps}")
+			return
+		self.current_step = current_step
+
+	def close_next(self):
+		try:
+			self.open_all()
+			if (self.total_steps == 0):
+				printf(f"Error: closure sequency was not configured")
+
+			channels_to_close = self.closure_sequence[self.current_step % self.total_steps]
+			channel_list = "(@" + ",".join(channels_to_close) + ")"
+			self.write(f'ROUT:CLOS {channel_list}')
+
+			# check
+			res = self.query(f'ROUT:CLOS:STAT? {channel_list}')
+			expected = ",".join(["1"] * len(channels_to_close))
+
+			if res != expected:
+				print(f'Failed: ROUTe:CLOSe:STATe? Got {res}; Expected {expected}')
+				return -1
+
+			self.current_step += 1
+
+		except Exception as e:
+			print(f"Switching to the next commutation step failed: {e}")
+			return -1
+
+		return 0

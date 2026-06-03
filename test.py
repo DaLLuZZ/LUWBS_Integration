@@ -4,12 +4,15 @@ import time
 class Test:
     DM3068 = None
     TH1991 = None
+    SWITCH = None
 
     def __init__(self):
-        self.DM3068 = device.DM3068()
+        self.SWITCH = device.LUWBS_Switch()
         self.TH1991 = device.TH1991()
+        self.DM3068 = device.DM3068()
 
         self.DM3068.set_function('VOLT')
+        time.sleep(1)
 
     # inputs:
     # current value (A)
@@ -27,7 +30,7 @@ class Test:
             self.TH1991.output_enable()
             for i in range(num_cycles):
                 voltage = self.DM3068.shot_measure_and_read()
-                print(f"result {i}: {voltage} V")
+                #print(f"result {i}: {voltage} V")
                 accum_volt = accum_volt + voltage
         except Exception as e:
             print(f"Error during resistance measurement: {e}")
@@ -42,8 +45,21 @@ class Test:
 
 def main():
     test = Test()
-    resistance = test.measure_res(current_amp=1e-9, voltage_limit_v=5, num_cycles=15)
-    print(f"Res: {resistance} Ohms")
+
+    closure_seq = [
+        ["0!0", "1!1", "2!2", "3!3"],
+        ["0!1", "1!2", "2!3", "3!0"],
+        ["0!2", "1!3", "2!0", "3!1"],
+        ["0!2", "1!3", "2!0", "3!1"],
+    ]
+    test.SWITCH.set_closure_sequence(closure_seq)
+
+    for i in range(len(closure_seq)):
+        if test.SWITCH.close_next() == 0:
+            resistance = test.measure_res(current_amp=1e-9, voltage_limit_v=5, num_cycles=15)
+            print(f"Res {i}: {resistance} Ohms")
+        else: # error
+            break
 
 if __name__ == '__main__':
     main()
