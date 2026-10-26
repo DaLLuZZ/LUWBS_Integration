@@ -1586,6 +1586,43 @@ class TH1991(scpi_device):
 		print(f"error disabling output (timeout)")
 		return -1
 
+	def enable_remote(self):
+		self.write(':SENSE1:REMote 1')
+		# for some reason instrument needs time to return 1 or ON
+		# sometimes it returns 1 and sometimes ON for both:
+		# - :SENSE1:REMote?
+		# - :SENSE1:VOLTage:RANGE:AUTO?
+		max_attempts = 20 # give max. 20 attempts
+		for i in range(max_attempts):
+			check = self.query(':SENSE1:REMote?')
+			if check != 'ON' and check != '1':
+				if i == max_attempts - 1:
+					print(f"Error enabling remote mode: got {check}, expected ON or 1")
+					return -1
+				continue
+			else:
+				break
+	
+	def set_meas_range(self):
+		self.write(':SENSE1:VOLTage:RANGE:AUTO 1')
+		max_attempts = 20 # give max. 20 attempts
+		for i in range(max_attempts):
+			check = self.query(':SENSE1:VOLTage:RANGE:AUTO?')
+			if check != 'ON' and check != '1':
+				if i == max_attempts - 1:
+					print(f"Error enabling auto range: got {check}, expected ON or 1")
+					return -1
+				continue
+			else:
+				break
+	
+	# TODO: add checks, separate into different methods with args
+	def shot_measure_and_read(self):
+		self.write(':MEASure:VOLTage? (@1)')
+		a = self.read()
+		print(f"Got result: {a}")
+		return float(a)
+
 class LUWBS_Switch(scpi_device):
 	# Commutator designed for LUWBS
 	# As a SCPI device, it inherits the following functions:
@@ -1648,7 +1685,7 @@ class LUWBS_Switch(scpi_device):
 		try:
 			self.open_all()
 			if (self.total_steps == 0):
-				printf(f"Error: closure sequency was not configured")
+				print(f"Error: closure sequency was not configured")
 
 			channels_to_close = self.closure_sequence[self.current_step % self.total_steps]
 			channel_list = "(@" + ",".join(channels_to_close) + ")"
