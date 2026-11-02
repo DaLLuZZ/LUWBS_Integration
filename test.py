@@ -57,9 +57,9 @@ def main():
     ]
     test.SWITCH.set_closure_sequence(closure_seq)
 
-    for i in range(10):
+    for i in range(1):
         if test.SWITCH.close_next() == 0:
-            resistance = test.measure_res(current_amp=100e-9, voltage_limit_v=10, num_cycles=15)
+            resistance = test.measure_res(current_amp=100e-9, voltage_limit_v=2, num_cycles=500)
             print(f"Res {i}: {resistance} Ohms")
         else: # error
             break

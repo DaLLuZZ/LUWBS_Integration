@@ -1641,7 +1641,8 @@ class LUWBS_Switch(scpi_device):
 	def __init__(self):
 		super().__init__()
 		self.model_type = 'LUWBS'
-		self.device_address = 'TCPIP0::192.168.10.203::5025::SOCKET'
+		#self.device_address = 'TCPIP0::192.168.10.203::5025::SOCKET'
+		self.device_address = 'TCPIP0::127.0.0.1::5025::SOCKET'
 		self.read_termination = '\r\n'
 		try:
 			self.connect()
